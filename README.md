@@ -14,30 +14,32 @@ This project demonstrates high-quality TypeScript patterns, resilience engineeri
 
 ---
 
-# 🚀 Getting Started
+## 🚀 Getting Started
 
-```bash
-npm install
-npm run dev
-Server:
+- **Prerequisites:** Node.js 18+ (for native `fetch`) and npm installed.
+- **Install dependencies**
+  ```bash
+  npm install
+  ```
+- **Run the dev server**
+  ```bash
+  npm run dev
+  ```
+  Starts Fastify and the MSW mock server (dev only). Default URL: http://localhost:3000 (override with `PORT`).
+- **Run tests**
+  ```bash
+  npm test
+  ```
+- **Build and start in production**
+  ```bash
+  npm run build
+  npm start
+  ```
+  Set `NODE_ENV=production` and `PORT` as needed.
 
-arduino
-Copy code
-http://localhost:3000
-Run tests:
+## 🧱 Project Architecture
 
-bash
-Copy code
-npm test
-Build:
-
-bash
-Copy code
-npm run build
-npm start
-🧱 Project Architecture
-graphql
-Copy code
+```text
 src/
   server.ts                # App bootstrap + mock server startup
   config/                  # Environment + API URLs
@@ -50,217 +52,80 @@ mock-server/
   eventStore.js
 tests/
   *.test.ts                # Jest unit tests
-Core principles:
+```
 
-Thin routes
+**Core principles:** Thin routes; business logic in services; shared utilities in `lib`; strict typing; isolation for testing; mock server separated from TypeScript.
 
-Business logic in services
+## 📌 API Endpoints
 
-Shared utilities in /lib
-
-Strict typing
-
-Isolation for testing
-
-Mock server separated from TypeScript
-
-📌 API Endpoints
 Base: http://localhost:3000/api
 
-Method	Route	Description
-GET	/getUsers	List users
-GET	/getEvents	List events
-GET	/getEventsByUserId/:id	Task 2: parallel fetch
-POST	/addEvent	Task 3: circuit breaker
+| Method | Route | Description |
+| --- | --- | --- |
+| GET | /getUsers | List users |
+| GET | /getEvents | List events |
+| GET | /getEventsByUserId/:id | Task 2: parallel fetch |
+| POST | /addEvent | Task 3: circuit breaker |
 
-⚡ Task 2 — Parallel Fetching (Performance Optimization)
-Original Problem
-getEventsByUserId fetched each event sequentially.
-The mock API adds a 500ms delay per event.
+## ⚡ Task 2 — Parallel Fetching (Performance Optimization)
 
-Example sequential time:
-
-matlab
-Copy code
-3 events → 1.5s
-5 events → 2.5s
-10 events → 5s
-Solution
-Replace sequential logic with:
-
-ts
-Copy code
+**Original problem:** `getEventsByUserId` fetched each event sequentially; the mock API adds a 500ms delay per event.  
+**Solution:**
+```ts
 await Promise.all(user.events.map(getEventById));
-Result
-All event fetches fire concurrently.
+```
+**Result:** All event fetches fire concurrently. Measured response time ≈ 510 ms for 2 events (matches 500ms delay → parallel).
 
-Measured response time:
+## 🛡 Task 3 — Custom Circuit Breaker
 
-arduino
-Copy code
-≈ 510 ms for 2 events (matches 500ms delay → parallel)
-This was validated in both manual logs and automated tests.
-
-🛡 Task 3 — Custom Circuit Breaker
 A fully custom implementation (no libraries), featuring:
 
-Closed → Open after 3 failures within rolling 30s window
+- Closed → Open after 3 failures within rolling 30s window
+- Open → Half-Open after cooldown
+- Half-Open allows exactly 1 canary request; canary success → Closed; failure → Open (reset cooldown)
+- Fail-fast behavior during OPEN state
+- Typed event emitter for state transitions
 
-Open → Half-Open after cooldown
+Used for protecting the `/addEvent` endpoint from repeated external failures. Unit tests confirm all transitions.
 
-Half-Open allows exactly 1 canary request
+## 🧪 Tests
 
-Canary success → Closed
+Suite covers:
 
-Canary failure → Open (reset cooldown)
+- Circuit Breaker state machine: failure accumulation, open state, half-open, canary success/failure, fail-fast logic
+- `eventsByUser.service`: parallel latency check, empty events, event fetch failure → AppError
+- `addEvent.service`: success flow, API-level error (success:false), breaker fail-fast, network errors
+- `eventApi.service`: correct URLs and HTTP methods, JSON parsing, error cases, fetch rejection behavior
+- Route integration: `/api/addEvent` HTTP codes, `sendError` formatting
 
-Fail-fast behavior during OPEN state
+## 🔍 Logging
 
-Typed event emitter for state transitions
+Fastify logs include incoming request, route hit/miss, response time, and structured JSON output for debugging and performance insights.
 
-Used for protecting the /addEvent endpoint from repeated external failures.
+## 🧩 What’s Missing / Unimplemented (by design)
 
-Unit tests confirm all transitions.
-
-🧪 Tests
-Test suite includes:
-
-✔ Circuit Breaker (full state machine)
-failure accumulation
-
-open state
-
-half-open
-
-canary success
-
-canary failure
-
-fail-fast logic
-
-✔ eventsByUser.service (parallel fetch)
-parallel latency check
-
-empty events
-
-event fetch failure → AppError
-
-✔ addEvent.service (breaker wrapper)
-success flow
-
-API-level error (success:false)
-
-breaker fail-fast behavior
-
-network errors
-
-✔ eventApi.service
-correct URLs
-
-correct HTTP methods
-
-JSON parsing behavior
-
-error cases
-
-fetch rejection behavior
-
-✔ Route Integration Tests
-/api/addEvent returns correct HTTP codes
-
-sendError formatting works as expected
-
-🔍 Logging
-Fastify logs include:
-
-Incoming request
-
-Route hit/miss
-
-Response time
-
-Structured JSON output
-
-Useful for debugging and performance insights.
-
-🧩 What’s Missing / Unimplemented (by design)
 These items were intentionally left out or are optional polish:
 
-❌ ESLint + Prettier
-Would enforce consistent code style and static analysis
+- ❌ ESLint + Prettier
+- ❌ Test coverage reporting
+- ❌ Integration tests for all routes
+- ❌ Schema validation (Fastify Schema)
+- ❌ Error boundary auditing
+- ❌ Performance benchmark scripts
+- ❌ Dockerfile
+- ❌ CI pipeline
+- ❌ Config improvements
 
-Easy to add with eslint-config-google or eslint-config-standard
+## 🚀 Potential Improvements (If this were a real product)
 
-❌ Test Coverage Reporting
-Jest can produce coverage/lcov-report
+1. Refactor Circuit Breaker into its own NPM package (fully generic and reusable).
+2. Implement typed domain models (DTOs, validation, transformers).
+3. Observability: add metrics for breaker state, Prometheus counters, tracing with OpenTelemetry.
+4. Replace MSW with WireMock or lightweight Express stub for more realistic simulation.
+5. Introduce Repository Pattern to prepare for real DB integration.
+6. Rate limiting + request dedupe for resilience.
+7. Retry & backoff strategy combined with circuit breaker for more robust recovery.
 
-Useful for completeness but not required for the challenge
+## 🏁 Conclusion
 
-❌ Integration Tests for All Routes
-Only critical ones implemented
-
-Others easy to add via app.inject()
-
-❌ Schema Validation (Fastify Schema)
-Input validation currently minimal
-
-Could use zod or Fastify's schema system
-
-❌ Error Boundary Auditing
-Some external-network error cases could be normalized further
-
-❌ Performance Benchmark Scripts
-Could add autocannon tests for load testing
-
-❌ Dockerfile
-For portability and deployment-friendly packaging
-
-❌ CI Pipeline
-GitHub Actions: run tests on push
-
-❌ Config Improvements
-Environment variable validation
-
-Split dev/testing/production configs
-
-🚀 Potential Improvements (If this were a real product)
-1. Refactor Circuit Breaker into its own NPM package
-It’s fully generic and reusable.
-
-2. Implement typed domain models
-(DTOs, validation, transformers)
-
-3. Observability
-Add metrics for breaker state
-
-Add Prometheus counters
-
-Add tracing with OpenTelemetry
-
-4. Replace MSW with WireMock or lightweight Express stub
-More realistic in production simulation.
-
-5. Introduce Repository Pattern
-To prepare for real DB integration.
-
-6. Rate limiting + request dedupe
-For resilience.
-
-7. Retry & Backoff strategy
-Combine with circuit breaker for more robust recovery.
-
-🏁 Conclusion
-This project demonstrates:
-
-Strong TypeScript fundamentals
-
-Practical performance improvements
-
-Realistic resilience mechanisms
-
-Clean architecture
-
-Full unit test coverage
-
-Production-minded structure
-
+This project demonstrates strong TypeScript fundamentals, practical performance improvements, realistic resilience mechanisms, clean architecture, and full unit test coverage with a production-minded structure.
